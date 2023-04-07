@@ -1,0 +1,87 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  BucketName:
+    Type: String
+    Description: The name of the S3 bucket
+  DomainName:
+    Type: String
+    Description: The domain name to use for the CloudFront distribution
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+  CloudFrontDistribution:
+    Type: 'AWS::CloudFront::Distribution'
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: CloudFront distribution for S3 bucket
+        Origins:
+          - DomainName: !GetAtt S3Bucket.DomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultRootObject: index.html
+        ViewerCertificate:
+          AcmCertificateArn: !Ref SSLCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2018
+          CertificateSource: acm
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          TargetOriginId: S3Origin
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: none
+        PriceClass: PriceClass_100
+  SSLCertificate:
+    Type: 'AWS::CertificateManager::Certificate'
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+  CloudFrontIAMUser:
+    Type: 'AWS::IAM::User'
+    Properties:
+      UserName: cloudfront-user
+      Path: /
+  CloudFrontIAMAccessKey:
+    Type: 'AWS::IAM::AccessKey'
+    Properties:
+      UserName: !Ref CloudFrontIAMUser
+  CloudFrontIAMPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: cloudfront-policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'cloudfront:GetDistribution'
+              - 'cloudfront:ListDistributions'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref BucketName, '/*']]
+      Users:
+        - !Ref CloudFrontIAMUser
+Outputs:
+  CloudFrontDomainName:
+    Description: The domain name of the CloudFront distribution
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontIAMAccessKeyId:
+    Description: The access key ID for the IAM user associated with the CloudFront distribution
+    Value: !Ref CloudFrontIAMAccessKey
+  CloudFrontIAMSecretAccessKey:
+    Description: The secret access key for the IAM user associated with the CloudFront distribution
+    Value: !GetAtt CloudFrontIAMAccessKey.SecretAccessKey
+  S3BucketName:
+    Description: The name of the S3 bucket
+    Value: !Ref BucketName

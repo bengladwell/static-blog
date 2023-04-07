@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  BucketName:
+    Type: String
+    Description: The name of the S3 bucket
+  DomainName:
+    Type: String
+    Description: The domain name to use for the CloudFront distribution without host (no www)
+  HostedZoneId:
+    Type: String
+    Description: The Route 53 zone ID for the domain
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
+  AssetOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub ["${StackName}-cloudfront", { StackName: !Ref AWS::StackName }]
+  SSLCertificate:
+    Type: 'AWS::CertificateManager::Certificate'
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName 
+          HostedZoneId: !Ref HostedZoneId
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt S3Bucket.DomainName
+            Id: site-assets
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub ["origin-access-identity/cloudfront/${AssetOriginAccessIdentity}", { AssetOriginAccessIdentity: !Ref AssetOriginAccessIdentity }]
+        Enabled: true
+        HttpVersion: http2
+        Aliases:
+          - !Ref DomainName
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          TargetOriginId: site-assets
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # AllViewer
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          SslSupportMethod: "sni-only"
+          MinimumProtocolVersion: "TLSv1"
+          AcmCertificateArn: !Ref SSLCertificate
+        IPV6Enabled: true
+
+Outputs:
+  CloudFrontDomainName:
+    Description: The domain name of the CloudFront distribution
+    Value: !GetAtt Distribution.DomainName
+  S3BucketName:
+    Description: The name of the S3 bucket
+    Value: !Ref BucketName
