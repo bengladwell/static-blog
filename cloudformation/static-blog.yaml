@@ -15,14 +15,55 @@ Resources:
     Type: 'AWS::S3::Bucket'
     Properties:
       BucketName: !Ref BucketName
+      AccessControl: PublicRead
       WebsiteConfiguration:
         IndexDocument: index.html
-  AssetOriginAccessIdentity:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub ["${StackName}-cloudfront", { StackName: !Ref AWS::StackName }]
   SSLCertificate:
+    Type: 'AWS::CertificateManager::Certificate'
+    Properties:
+      DomainName: !Join ['.', ['www', !Ref DomainName]]
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName:  !Join ['.', ['www', !Ref DomainName]]
+          HostedZoneId: !Ref HostedZoneId
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub ['${Bucket}.s3-website-${Region}.amazonaws.com', { Bucket: !Ref S3Bucket, Region: !Ref AWS::Region }]
+            Id: site-assets
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        HttpVersion: http2
+        Aliases:
+          - !Join ['.', ['www', !Ref DomainName]]
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          TargetOriginId: site-assets
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # Managed-CORS-S3Origin
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          SslSupportMethod: "sni-only"
+          MinimumProtocolVersion: "TLSv1"
+          AcmCertificateArn: !Ref SSLCertificate
+        IPV6Enabled: true
+  RedirectS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join ['-', ['redirect', !Ref BucketName]]
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        RedirectAllRequestsTo:
+          HostName: !Join ['.', ['www', !Ref DomainName]]
+          Protocol: https
+  RedirectSSLCertificate:
     Type: 'AWS::CertificateManager::Certificate'
     Properties:
       DomainName: !Ref DomainName
@@ -30,15 +71,15 @@ Resources:
       DomainValidationOptions:
         - DomainName: !Ref DomainName 
           HostedZoneId: !Ref HostedZoneId
-  Distribution:
+  RedirectDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Origins:
-          - DomainName: !GetAtt S3Bucket.DomainName
+          - DomainName: !Sub ['${Bucket}.s3-website-${Region}.amazonaws.com', { Bucket: !Ref RedirectS3Bucket, Region: !Ref AWS::Region }]
             Id: site-assets
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub ["origin-access-identity/cloudfront/${AssetOriginAccessIdentity}", { AssetOriginAccessIdentity: !Ref AssetOriginAccessIdentity }]
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
         Enabled: true
         HttpVersion: http2
         Aliases:
@@ -51,12 +92,12 @@ Resources:
           TargetOriginId: site-assets
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
-          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # AllViewer
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # Managed-CORS-S3Origin
         PriceClass: PriceClass_100
         ViewerCertificate:
           SslSupportMethod: "sni-only"
           MinimumProtocolVersion: "TLSv1"
-          AcmCertificateArn: !Ref SSLCertificate
+          AcmCertificateArn: !Ref RedirectSSLCertificate
         IPV6Enabled: true
 
 Outputs:
