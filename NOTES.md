@@ -13,7 +13,7 @@ $ docker run --rm --name ghost-local -e NODE_ENV=development -e database__connec
 
 ```sh
 $ rm -fr static/
-$ node_modules/.bin/gssg --url https://bengladwell.com
+$ node_modules/.bin/gssg --url https://www.bengladwell.com
 ```
 
 ## Sync locally generated files to S3
@@ -21,6 +21,11 @@ $ node_modules/.bin/gssg --url https://bengladwell.com
 ```sh
 $ aws s3 sync --delete static/ s3://bengladwell.com
 ```
+
+## Update all objects to have public read access
+
+* in AWS S3 console, select all objects in the bucket
+* Actions -> Make public using ACL
 
 ## Create cloudformation stack
 
